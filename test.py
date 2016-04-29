@@ -74,7 +74,10 @@ def parse(line):
 
 	point1 = (round(x1, 2), round(y1, 2))
 	point2 = (round(x2, 2), round(y2, 2))
-	newLine = [time1, time2, point1, point2]
+	county1 = findCounty(point1)
+	county2 = findCounty(point2)
+	newLine = [time1, time2, county1, county2]
+	#newLine = [time1, time2, point1, point2]
 	#newLine = (time + "," + county, 1)
 	return newLine
 
@@ -136,8 +139,8 @@ def main(sc):
 		#green_tripdata_2015-01.csv
 		path = "/taxidata/green/green_tripdata_2015-" + month + ".csv"
 		csvPaths.append(path)
-		path2 = "/taxidata/yellow/yellow_tripdata_2015-" + month + ".csv"
-		csvPaths.append(path2)
+		#path2 = "/taxidata/yellow/yellow_tripdata_2015-" + month + ".csv"
+		#csvPaths.append(path2)
 
 	totalTimes = sc.emptyRDD()
 	totalLocations = sc.emptyRDD()
@@ -147,10 +150,17 @@ def main(sc):
 		parsedTrips = trips.map(parse)
 		parsedTrips.cache()
 		busyTimes = parsedTrips.flatMap(lambda line:line[0:2]).map(lambda x:(x,1)).reduceByKey(add)
+		busyLocations = parsedTrips.flatMap(lambda line:line[2:4]).map(lambda x:(x,1)).reduceByKey(add)
+		busyRoutes = parsedTrips.map(lambda line:((line[0],line[2],line[3]), 1)).reduceByKey(add)
+		parsedTrips.unpersist()
+		"""
+		busyTimes = parsedTrips.flatMap(lambda line:line[0:2]).map(lambda x:(x,1)).reduceByKey(add)
 		locations = parsedTrips.flatMap(lambda line:line[2:4]).map(lambda x:(x,1)).reduceByKey(add)
 		busyLocations = locations.map(mapLocations).reduceByKey(add)
 		routes = parsedTrips.map(lambda line:((line[0],line[2],line[3]), 1)).reduceByKey(add)
 		busyRoutes = routes.map(mapRoutes).reduceByKey(add)
+		parsedTrips.unpersist()
+		"""
 
 		totalTimes = totalTimes.union(busyTimes)
 		totalLocations = totalLocations.union(busyLocations)
@@ -165,8 +175,8 @@ if __name__ == "__main__":
 	conf.setAppName(APP_NAME)
 	conf.setMaster('yarn-client')
 	conf.set('spark.executor.memory', '1g')
-    conf.set('spark.executor.cores','1')
-    conf.set('spark.executor.instances','5')
+    conf.set('spark.executor.cores','4')
+    conf.set('spark.executor.instances','7')
 	sc = SparkContext(conf=conf)
 	sc.addPyFile("shapefile.py")
 	COUNTIES = ['Albany', 'Allegany', 'Bronx', 'Broome', 'Cattaraugus', 'Cayuga', 
