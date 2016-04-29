@@ -6,7 +6,7 @@ tip_amount			tolls_amount			improvement_surcharge	total_amount
 """
 from pyspark import SparkConf, SparkContext, SparkFiles
 from operator import add
-import shapefile
+#import shapefile
 
 APP_NAME = "Traffic_Peak_Analysis"
 
@@ -72,21 +72,20 @@ def parse(line):
   	except:
   		pass
 
-	point1 = (round(x1, 3), round(y1, 3))
-	point2 = (round(x2, 3), round(y2, 3))
+	point1 = (round(x1, 2), round(y1, 2))
+	point2 = (round(x2, 2), round(y2, 2))
 	newLine = [time1, time2, point1, point2]
 	#newLine = (time + "," + county, 1)
 	return newLine
 
 def findCounty(point):
 	county = "Not found"
-	srs = shapeRecs.value
-	for sr in srs:
-		coords = sr.shape.points
-		bbox = sr.shape.bbox
-		if point_inside_polygon(point[0],point[1],coords, bbox):
-			county = sr.record[2]
-			break
+	idx = spatialIdx.value
+	cs = couties.value
+	try:
+		county = cs[idx[point]]
+	except:
+		county = "Richmond"
 	return county
 
 def mapLocations(line):
@@ -115,11 +114,21 @@ def deleteInvalidLines(line):
 		return False
 	return line[9] != "0.0" and line[10] != "0.0"
 
+def readSpatialIndex(path):
+	idx = {}
+	f = open(path, "r")
+	for line in f:
+		line = line.split(",")
+		point = (float(line[0]), float(line[1]))
+		countyIndex = int(line[2])
+		idx[point] = countyIndex
+	f.close()
+	return idx
+
 def main(sc):
 
 	csvPaths = []
-	csvPaths.append("/taxidata/yellow/yellow_tripdata_2015-01.csv")
-	"""
+	#csvPaths.append("/taxidata/green/")
 	for i in range(1, 13):
 		if i < 10:
 			month = "0"+str(i)
@@ -129,7 +138,6 @@ def main(sc):
 		csvPaths.append(path)
 		path2 = "/taxidata/yellow/yellow_tripdata_2015-" + month + ".csv"
 		csvPaths.append(path2)
-	"""
 
 	totalTimes = sc.emptyRDD()
 	totalLocations = sc.emptyRDD()
@@ -148,18 +156,30 @@ def main(sc):
 		totalLocations = totalLocations.union(busyLocations)
 		totalRoutes = totalRoutes.union(busyRoutes)
 
-	totalTimes.reduceByKey(add).sortBy(lambda x:x[1], False).saveAsTextFile("Busy_Times")
-	totalLocations.reduceByKey(add).sortBy(lambda x:x[1], False).saveAsTextFile("Busy_Locations")
-	totalRoutes.reduceByKey(add).sortBy(lambda x:x[1], False).saveAsTextFile("Busy_Routes")
+	totalTimes.reduceByKey(add).sortBy(lambda x:x[1], False).saveAsTextFile("/zitong/output/Busy_Times")
+	totalLocations.reduceByKey(add).sortBy(lambda x:x[1], False).saveAsTextFile("/zitong/output/Busy_Locations")
+	totalRoutes.reduceByKey(add).sortBy(lambda x:x[1], False).saveAsTextFile("/zitong/output/Busy_Routes")
 
 if __name__ == "__main__":
 	conf = SparkConf()
 	conf.setAppName(APP_NAME)
 	conf.setMaster('yarn-client')
+	conf.set('spark.executor.memory', '1g')
+    conf.set('spark.executor.cores','1')
+    conf.set('spark.executor.instances','5')
 	sc = SparkContext(conf=conf)
 	sc.addPyFile("shapefile.py")
-	shapefilePath = "../newShp/cty036"
-	sf = shapefile.Reader(shapefilePath)
-	shapeRecords = sf.shapeRecords()
-	shapeRecs = sc.broadcast(shapeRecords)
+	COUNTIES = ['Albany', 'Allegany', 'Bronx', 'Broome', 'Cattaraugus', 'Cayuga', 
+			'Chautauqua', 'Chemung', 'Chenango', 'Clinton', 'Columbia', 'Cortland', 
+			'Delaware', 'Dutchess', 'Erie', 'Essex', 'Franklin', 'Fulton', 'Genesee', 
+			'Greene', 'Hamilton', 'Herkimer', 'Jefferson', 'Kings', 'Lewis', 
+			'Livingston', 'Madison', 'Monroe', 'Montgomery', 'Nassau', 'New York', 
+			'Niagara', 'Oneida', 'Onondaga', 'Ontario', 'Orange', 'Orleans', 'Oswego', 
+			'Otsego', 'Putnam', 'Queens', 'Rensselaer', 'Richmond', 'Rockland', 'Saratoga', 
+			'Schenectady', 'Schoharie', 'Schuyler', 'Seneca', 'St. Lawrence', 'Steuben', 'Suffolk', 
+			'Sullivan', 'Tioga', 'Tompkins', 'Ulster', 'Warren', 'Washington', 'Wayne', 
+			'Westchester', 'Wyoming', 'Yates']
+	spatialIdx = readSpatialIndex("spatialIdx.csv")
+	spatialIdx = sc.broadcast(spatialIdx)
+	couties = sc.broadcast(COUNTIES)
 	main(sc)
